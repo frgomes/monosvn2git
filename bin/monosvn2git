@@ -1,0 +1,208 @@
+#!/bin/bash
+
+# The script takes jquantlib monolithic SVN repository and creates separate git repositories, one for each project.
+# (C) Richard Gomes JQuantLib.org, April 2012.
+#
+# REQUIREMENTS:
+#  1. The git command-line utility must be installed.
+#  2. The git-subtree command is required, but provided as part of this package in case you still don't have it in your distribution
+
+
+verbose=0
+simulate=0
+
+
+function usage() {
+  app=`basename $0`
+  echo "Usage: $app [-v] [-s] [-u git-user ] [-g git-group] svn-repository monolithic-project-folder authors-file git-repository [workspace]"
+  echo "Converts a remote monolithic SVN repository, splitting its subprojects into separate GIT repositories"
+  echo ""
+  echo "Example:"
+  echo "    $app -u joe -g users \\"
+  echo "                      https://jquant.svn.sourceforge.net/svnroot/jquant \\"
+  echo "                      /srv/git-repo/remote-svn/jquantlib \\"
+  echo "                      /srv/git-repo/remote-svn/jquantlib-authors.txt \\"
+  echo "                      /srv/git-repo \\"
+  echo "                      ~/workspace"
+  echo "    . Retrieves projects from monolithic SVN repository at https://jquant.svn.sourceforge.net/svnroot/jquant"
+  echo "    . Converts monolithic SVN repository onto monolithic project folder /srv/git-repo/remote-svn/jquantlib"
+  echo "    . Applies authors-file /srv/git-repo/jquantlib-authors.txt during conversion"
+  echo "    . Splits subprojects from /srv/git-repo/remote-svn/jquantlib to /srv/git-repo"
+  echo "    . Optionally clones projects from /srv/git-repo to ~/workspace"
+  echo ""
+  echo "Options:"
+  echo "    -u git-user    uid to be applied to converted GIT repositories"
+  echo "    -g git-group   gid to be applied to converted GIT repositories"
+  echo "    -s             simulate mode; does not perform GIT operations"
+  echo "    -v             verbose"
+}
+
+
+function main {
+validate
+if [ $? -ne 0 ]; then 
+  echo "Validating user configurations failed!"
+  exit 1
+fi
+clone_repo
+split
+}
+
+
+function validate {
+  if [ $verbose -gt 0 ] ;then
+    echo "Validating configurations ..."
+  fi
+
+  which git > /dev/null 2>&1
+  if [ "$?" !=  "0" ]; then
+    echo "ERROR: git command-line utility should be installed and addd to the system path!" 
+    return 1
+  fi
+  git subtree > /dev/null 2>&1
+  if [ "$?" ==  "1" ]; then
+    echo "ERROR: The git option subtree is not installed!"
+    return 1
+  fi
+
+  if [ -d ${git_repo_remotesvn} ]; then
+    echo "ERROR: repository directory ${git_repo_remotesvn} already exists" 
+    return 1
+  fi
+  if [ ! -f ${authors} ]; then
+    echo "ERROR: Missing authors file ${authors}"
+    return 1
+  fi
+  if [ ! -d ${git_repo} ]; then
+    echo "ERROR: Missing repository base directory ${git_repo}" 
+    return 1
+  fi
+  if [ ! -d ${project_workspace} ]; then
+    echo "ERROR: Missing workspace directory ${project_workspace}" 
+    return 1
+  fi
+}
+
+
+function clone_repo {
+  if [ $verbose -gt 0 ] ;then
+    echo "git svn clone ${svn_repo} --stdlayout --authors-file=${authors} -t tags -b branches -T trunk ${git_repo_remotesvn}"
+  fi
+  if [ $simulate -eq 0 ] ;then
+    git svn clone ${svn_repo} --stdlayout --authors-file=${authors} -t tags -b branches -T trunk ${git_repo_remotesvn}
+  fi
+}
+
+
+# Creates a branch for every subfolder it finds and a new top level folder for each.
+# Then initialises a git repository, copying into the relevant branch.
+function split {
+  pushd ${git_repo_remotesvn}
+  for project in $( ls . ) ; do
+    cd ${git_repo_remotesvn}
+    if [ -d $project ]; then
+      branchname=`echo ${project}.git | tr [A-Z] [a-z]`
+      ##--
+      if [ $verbose -gt 0 ] ;then
+        echo "Performing subtree split..."
+        echo "git subtree split -P $project -b ${project}.export"
+      fi
+      if [ $simulate -eq 0 ] ;then
+        git subtree split -P $project -b ${branchname}.export
+      fi
+      ##--
+      if [ $verbose -gt 0 ] ;then
+        echo "Initialising git"
+      fi
+      if [ $simulate -eq 0 ] ;then
+        mkdir -p ${git_repo}/$branchname
+        cd ${git_repo}/$branchname
+        git init
+      fi
+      ##--
+      if [ $verbose -gt 0 ] ;then
+        echo "Fetching branch ${branchname}"
+        echo "git fetch ${git_repo_remotesvn} ${branchname}.export"
+        echo "git checkout -b master FETCH_HEAD"
+      fi
+      if [ $simulate -eq 0 ] ;then
+        git fetch ${git_repo_remotesvn} ${branchname}.export
+        git checkout -b master FETCH_HEAD 2>&1
+      fi
+      ##--
+      local_chown ${git_repo}/$branchname
+      ##--
+      if [ ! -z "${project_workspace}" ] ;then
+        pushd ${project_workspace} 
+        if [ $verbose -gt 0 ] ;then
+          echo "git clone ${git_repo}/${branchname} ${project}"
+        fi
+        if [ $simulate -eq 0 ] ;then
+          git clone ${git_repo}/${branchname} ${project}
+        fi
+        popd
+      fi
+    fi
+  done
+  popd
+}
+
+
+function local_chown {
+  if [ $verbose -gt 0 ] ;then
+    echo "Setting ownership"
+    echo "chown -R ${git_user}:${git_group} $1"
+  fi
+  if [ $simulate -eq 0 ] ;then
+    echo "chown -R ${git_user}:${git_group} $1"
+  fi
+}
+
+
+
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# FIXME: The options or syntax of 'id' and 'chown' may vary on your OS.
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+git_user=$(id -u -n)
+git_group=$(id -g -n)
+
+while getopts "u:g:sv" opt ;do
+    case $opt in
+        u)
+            git_user="${OPTARG}"
+            ;;
+        g)
+            git_group="${OPTARG}"
+            ;;
+        h)
+            usage
+            exit 1
+            ;;
+        s)
+            simulate=1
+            ;;
+        v)
+            verbose=1
+            ;;
+        \?)
+            usage
+            exit
+            ;;
+    esac
+done
+
+shift $((OPTIND-1))
+if [ $# -ge 4 -a $# -le 5 ] ;then
+    svn_repo="$1"
+    git_repo_remotesvn="$2"
+    authors="$3"
+    git_repo="$4"
+    project_workspace="$5"
+else
+    usage
+    exit 1
+fi
+
+main
+exit 0

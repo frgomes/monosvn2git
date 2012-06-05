@@ -1,0 +1,63 @@
+Usage: monosvn2git [-v] [-s] [-u git-user ] [-g git-group] svn-repository monolithic-project-folder authors-file git-repository [workspace]
+Converts a remote monolithic SVN repository, splitting its subprojects into separate GIT repositories
+
+Example:
+    monosvn2git -u frgomes -g users \\
+                      https://jquant.svn.sourceforge.net/svnroot/jquant \\
+                      /srv/git-repo/remote-svn/jquantlib \\
+                      /srv/git-repo/remote-svn/jquantlib-authors.txt \\
+                      /srv/git-repo \\
+                      ~/workspace
+    . Retrieves projects from monolithic SVN repository at https://jquant.svn.sourceforge.net/svnroot/jquant
+    . Converts monolithic SVN repository onto monolithic project folder /srv/git-repo/remote-svn/jquantlib
+    . Applies authors-file /srv/git-repo/jquantlib-authors.txt during conversion
+    . Splits subprojects from /srv/git-repo/remote-svn/jquantlib to /srv/git-repo
+    . Optionally clones projects from /srv/git-repo to ~/workspace
+
+Options:
+    -u git-user    uid to be applied to converted GIT repositories
+    -g git-group   gid to be applied to converted GIT repositories
+    -s             simulate mode; does not perform GIT operations
+    -v             verbose
+
+
+
+
+REQUIREMENTS
+------------
+
+  1. The git command-line utility must be installed.
+  2. The git-subtree command is required, but provided as part of this package in case
+     you still don't have it in your distribution. For more information, please visit
+       http://github.com/apenwarr/git-subtree
+
+
+
+DEPENDENCIES
+------------
+
+  This script was developed and tested under a GNU Linux with Bash.
+  Chances are that there are dependencies from specific commands from this platform.
+
+
+
+INSTALLATION
+------------
+
+$ git clone http://github.com/frgomes/monosvn2git
+$ export MONOSVN2GIT_HOME=/path/to/mono2svn2git/folder
+$ PATH=$PATH:${MONOSVN2GIT_HOME}/bin
+
+
+
+AUTHOR
+------
+
+Richard Gomes <rgomes1997@yahoo.co.uk>
+
+
+
+THANKS
+------
+
+Special thanks to Henry Freedman for reorganizing the code and performing additional tests.
